@@ -1,0 +1,23 @@
+# Genie Space resource.
+#
+# Databricks Asset Bundles do not yet have a first-class `genie_spaces:` resource type
+# on every workspace. We bootstrap the space via a notebook task that uses the REST API,
+# falling back to printing manual setup steps if the workspace gates the Genie Create API.
+
+resources:
+  jobs:
+    qris_demo_genie_bootstrap_job:
+      name: "QRIS Demo — bootstrap Genie space"
+      description: "Creates or updates the QRIS Digital Banking Genie Space with instructions + 12 example SQL queries."
+
+      tasks:
+        - task_key: bootstrap_genie
+          notebook_task:
+            notebook_path: ../src/notebooks/02_bootstrap_genie_space.py
+            base_parameters:
+              catalog:       ${var.catalog}
+              schema:        ${var.schema}
+              warehouse_id:  ${var.warehouse_id}
+              space_title:   "QRIS Digital Banking (PT Bank Cendrawasih)"
+
+      max_concurrent_runs: 1

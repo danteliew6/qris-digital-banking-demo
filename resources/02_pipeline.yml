@@ -1,0 +1,17 @@
+resources:
+  pipelines:
+    qris_digital_banking_pipeline:
+      name: "QRIS Digital Banking — Bronze/Silver/Gold"
+      catalog: ${var.catalog}
+      schema:  ${var.schema}
+      serverless: true
+      development: true
+      photon: true
+
+      libraries:
+        - notebook:
+            path: ../src/pipeline/qris_pipeline.py
+
+      configuration:
+        bundle.catalog: ${var.catalog}
+        bundle.schema:  ${var.schema}

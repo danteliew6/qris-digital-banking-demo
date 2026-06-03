@@ -1,0 +1,48 @@
+# Databricks Asset Bundle: QRIS Digital Banking Demo
+#
+# End-to-end Indonesian retail-banking demo built around QRIS adoption.
+# Synthetic data -> Bronze/Silver/Gold pipeline -> AI/BI Dashboard -> Genie Space.
+
+bundle:
+  name: qris-digital-banking-demo
+
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: dante_azure_sea
+  schema:
+    description: Schema name for this demo
+    default: qris_digital_banking_demo
+  warehouse_id:
+    description: SQL warehouse ID used for dashboard + Genie
+    default: 6f64729f1845a7de
+  rows_customers:
+    description: Number of synthetic customers to generate
+    default: 50000
+  rows_merchants:
+    description: Number of synthetic QRIS merchants to generate
+    default: 5000
+  days_of_history:
+    description: How many days of transactional history to simulate
+    default: 90
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-7405612307414678.18.azuredatabricks.net
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      user_name: ${workspace.current_user.userName}
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-7405612307414678.18.azuredatabricks.net
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      user_name: ${workspace.current_user.userName}

@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    qris_demo_setup_job:
+      name: "QRIS Demo — setup + data gen"
+      description: "Creates the schema, generates synthetic Indonesian banking data, and runs the Lakeflow pipeline."
+
+      tasks:
+        - task_key: setup_schema
+          notebook_task:
+            notebook_path: ../src/notebooks/00_setup_schema.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema:  ${var.schema}
+
+        - task_key: generate_data
+          depends_on:
+            - task_key: setup_schema
+          notebook_task:
+            notebook_path: ../src/notebooks/01_generate_synthetic_data.py
+            base_parameters:
+              catalog:         ${var.catalog}
+              schema:          ${var.schema}
+              rows_customers:  ${var.rows_customers}
+              rows_merchants:  ${var.rows_merchants}
+              days_of_history: ${var.days_of_history}
+
+        - task_key: run_pipeline
+          depends_on:
+            - task_key: generate_data
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.qris_digital_banking_pipeline.id}
+            full_refresh: true
+
+        - task_key: bootstrap_genie
+          depends_on:
+            - task_key: run_pipeline
+          notebook_task:
+            notebook_path: ../src/notebooks/02_bootstrap_genie_space.py
+            base_parameters:
+              catalog:      ${var.catalog}
+              schema:       ${var.schema}
+              warehouse_id: ${var.warehouse_id}
+              space_title:  "QRIS Digital Banking (PT Bank Cendrawasih)"
+
+      max_concurrent_runs: 1

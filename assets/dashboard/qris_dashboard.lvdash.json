@@ -1,0 +1,468 @@
+{
+  "datasets": [
+    {
+      "name": "ds_qris_kpis_30d",
+      "displayName": "QRIS KPIs — last 30 days",
+      "queryLines": [
+        "SELECT",
+        "  SUM(amount_idr) AS volume_idr,",
+        "  COUNT(*) AS txn_count,",
+        "  COUNT(DISTINCT customer_id) AS active_customers,",
+        "  COUNT(DISTINCT merchant_id) AS active_merchants,",
+        "  AVG(amount_idr) AS avg_ticket_idr",
+        "FROM qris_transactions",
+        "WHERE status = 'SUCCESS' AND txn_date >= date_sub(current_date(), 30)"
+      ]
+    },
+    {
+      "name": "ds_daily_volume",
+      "displayName": "Daily QRIS volume",
+      "queryLines": [
+        "SELECT txn_date,",
+        "       SUM(amount_idr) AS volume_idr,",
+        "       COUNT(*) AS txn_count",
+        "FROM qris_transactions",
+        "WHERE status = 'SUCCESS' AND txn_date >= date_sub(current_date(), 30)",
+        "GROUP BY txn_date",
+        "ORDER BY txn_date"
+      ]
+    },
+    {
+      "name": "ds_city_volume",
+      "displayName": "QRIS volume by city",
+      "queryLines": [
+        "SELECT m.city,",
+        "       SUM(q.amount_idr) AS volume_idr,",
+        "       COUNT(*) AS txn_count,",
+        "       COUNT(DISTINCT q.customer_id) AS unique_customers",
+        "FROM qris_transactions q",
+        "JOIN merchants m USING (merchant_id)",
+        "WHERE q.status = 'SUCCESS' AND q.txn_date >= date_sub(current_date(), 30)",
+        "GROUP BY m.city",
+        "ORDER BY volume_idr DESC",
+        "LIMIT 12"
+      ]
+    },
+    {
+      "name": "ds_top_merchants",
+      "displayName": "Top 15 QRIS merchants",
+      "queryLines": [
+        "SELECT m.merchant_id,",
+        "       m.merchant_name,",
+        "       m.merchant_tier,",
+        "       m.mcc_description,",
+        "       m.city,",
+        "       SUM(dm.qris_amount_idr) AS volume_idr,",
+        "       SUM(dm.qris_txn_count)  AS txn_count",
+        "FROM daily_merchant_metrics dm",
+        "JOIN merchants m USING (merchant_id)",
+        "WHERE dm.date >= date_sub(current_date(), 30)",
+        "GROUP BY m.merchant_id, m.merchant_name, m.merchant_tier, m.mcc_description, m.city",
+        "ORDER BY volume_idr DESC",
+        "LIMIT 15"
+      ]
+    },
+    {
+      "name": "ds_segment_adoption",
+      "displayName": "QRIS adoption by segment",
+      "queryLines": [
+        "WITH base AS (",
+        "  SELECT c.segment,",
+        "         COUNT(DISTINCT c.customer_id) AS total_customers,",
+        "         COUNT(DISTINCT CASE WHEN c.digital_active THEN c.customer_id END) AS digital_customers,",
+        "         COUNT(DISTINCT q.customer_id) AS qris_active",
+        "  FROM customers c",
+        "  LEFT JOIN qris_transactions q",
+        "    ON q.customer_id = c.customer_id",
+        "   AND q.status = 'SUCCESS'",
+        "   AND q.txn_date >= date_sub(current_date(), 30)",
+        "  GROUP BY c.segment",
+        ")",
+        "SELECT segment,",
+        "       total_customers,",
+        "       digital_customers,",
+        "       qris_active,",
+        "       ROUND(100.0 * qris_active / total_customers, 1) AS qris_active_pct",
+        "FROM base",
+        "ORDER BY total_customers DESC"
+      ]
+    },
+    {
+      "name": "ds_tier_volume",
+      "displayName": "QRIS by merchant tier",
+      "queryLines": [
+        "SELECT m.merchant_tier,",
+        "       SUM(q.amount_idr) AS volume_idr,",
+        "       COUNT(*) AS txn_count,",
+        "       AVG(q.amount_idr) AS avg_ticket_idr",
+        "FROM qris_transactions q",
+        "JOIN merchants m USING (merchant_id)",
+        "WHERE q.status = 'SUCCESS' AND q.txn_date >= date_sub(current_date(), 30)",
+        "GROUP BY m.merchant_tier",
+        "ORDER BY CASE m.merchant_tier WHEN 'UMI' THEN 1 WHEN 'UKE' THEN 2 WHEN 'UMK' THEN 3 WHEN 'UBE' THEN 4 END"
+      ]
+    },
+    {
+      "name": "ds_mcc_volume",
+      "displayName": "QRIS by MCC category",
+      "queryLines": [
+        "SELECT m.mcc_description,",
+        "       SUM(q.amount_idr) AS volume_idr,",
+        "       COUNT(*) AS txn_count",
+        "FROM qris_transactions q",
+        "JOIN merchants m USING (merchant_id)",
+        "WHERE q.status = 'SUCCESS' AND q.txn_date >= date_sub(current_date(), 30)",
+        "GROUP BY m.mcc_description",
+        "ORDER BY volume_idr DESC"
+      ]
+    },
+    {
+      "name": "ds_qris_vs_bifast",
+      "displayName": "QRIS vs BI-Fast volume",
+      "queryLines": [
+        "SELECT 'QRIS' AS rail,",
+        "       SUM(amount_idr) AS volume_idr,",
+        "       COUNT(*) AS txn_count",
+        "FROM qris_transactions",
+        "WHERE status = 'SUCCESS' AND txn_date >= date_sub(current_date(), 30)",
+        "UNION ALL",
+        "SELECT 'BI-Fast' AS rail,",
+        "       SUM(amount_idr) AS volume_idr,",
+        "       COUNT(*) AS txn_count",
+        "FROM bifast_transfers",
+        "WHERE status = 'SUCCESS' AND transfer_date >= date_sub(current_date(), 30)"
+      ]
+    },
+    {
+      "name": "ds_dau_trend",
+      "displayName": "Daily Active Mobile Users",
+      "queryLines": [
+        "SELECT session_date,",
+        "       COUNT(DISTINCT customer_id) AS dau,",
+        "       COUNT(*) AS sessions",
+        "FROM mobile_sessions",
+        "WHERE session_date >= date_sub(current_date(), 30)",
+        "GROUP BY session_date",
+        "ORDER BY session_date"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "page_executive_summary",
+      "displayName": "Executive summary",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_volume",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_qris_kpis_30d",
+                "fields": [{"name": "volume_idr", "expression": "`volume_idr`"}],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {"fieldName": "volume_idr", "displayName": "QRIS volume (30d, IDR)", "format": {"type": "number-currency","currencyCode":"IDR","decimalPlaces":{"type":"max","places":0}}}
+              },
+              "frame": {"showTitle": true, "title": "QRIS volume (last 30d)"}
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "kpi_customers",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_qris_kpis_30d",
+                "fields": [{"name": "active_customers", "expression": "`active_customers`"}],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {"value": {"fieldName": "active_customers", "displayName": "QRIS-active customers"}},
+              "frame": {"showTitle": true, "title": "Active QRIS customers (30d)"}
+            }
+          },
+          "position": {"x": 2, "y": 0, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "kpi_merchants",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_qris_kpis_30d",
+                "fields": [{"name": "active_merchants", "expression": "`active_merchants`"}],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {"value": {"fieldName": "active_merchants", "displayName": "Active merchants"}},
+              "frame": {"showTitle": true, "title": "Active QRIS merchants (30d)"}
+            }
+          },
+          "position": {"x": 4, "y": 0, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "kpi_avg_ticket",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_qris_kpis_30d",
+                "fields": [{"name": "avg_ticket_idr", "expression": "`avg_ticket_idr`"}],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {"value": {"fieldName": "avg_ticket_idr", "displayName": "Avg ticket (IDR)", "format": {"type":"number-currency","currencyCode":"IDR","decimalPlaces":{"type":"max","places":0}}}},
+              "frame": {"showTitle": true, "title": "Avg QRIS ticket size"}
+            }
+          },
+          "position": {"x": 0, "y": 3, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "chart_daily_volume",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_daily_volume",
+                "fields": [
+                  {"name": "txn_date", "expression": "`txn_date`"},
+                  {"name": "volume_idr", "expression": "`volume_idr`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {"fieldName": "txn_date", "scale": {"type": "temporal"}, "displayName": "Date"},
+                "y": {"fieldName": "volume_idr", "scale": {"type": "quantitative"}, "displayName": "QRIS volume (IDR)"}
+              },
+              "frame": {"showTitle": true, "title": "Daily QRIS volume (30d)"}
+            }
+          },
+          "position": {"x": 2, "y": 3, "width": 4, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "chart_city",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_city_volume",
+                "fields": [
+                  {"name": "city", "expression": "`city`"},
+                  {"name": "volume_idr", "expression": "`volume_idr`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "volume_idr", "scale": {"type": "quantitative"}, "displayName": "QRIS volume (IDR)"},
+                "y": {"fieldName": "city", "scale": {"type": "categorical", "sort": {"by": "x-reversed"}}, "displayName": "City"}
+              },
+              "frame": {"showTitle": true, "title": "QRIS volume by city (top 12)"}
+            }
+          },
+          "position": {"x": 0, "y": 6, "width": 2, "height": 8}
+        },
+        {
+          "widget": {
+            "name": "table_top_merchants",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_top_merchants",
+                "fields": [
+                  {"name": "merchant_name", "expression": "`merchant_name`"},
+                  {"name": "merchant_tier", "expression": "`merchant_tier`"},
+                  {"name": "mcc_description", "expression": "`mcc_description`"},
+                  {"name": "city", "expression": "`city`"},
+                  {"name": "volume_idr", "expression": "`volume_idr`"},
+                  {"name": "txn_count", "expression": "`txn_count`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "merchant_name",    "displayName": "Merchant",      "type": "string"},
+                  {"fieldName": "merchant_tier",    "displayName": "Tier",          "type": "string"},
+                  {"fieldName": "mcc_description",  "displayName": "Category",      "type": "string"},
+                  {"fieldName": "city",             "displayName": "City",          "type": "string"},
+                  {"fieldName": "volume_idr",       "displayName": "Volume (IDR)",  "type": "decimal"},
+                  {"fieldName": "txn_count",        "displayName": "Transactions",  "type": "integer"}
+                ]
+              },
+              "frame": {"showTitle": true, "title": "Top 15 QRIS merchants (30d)"}
+            }
+          },
+          "position": {"x": 2, "y": 9, "width": 4, "height": 5}
+        }
+      ]
+    },
+    {
+      "name": "page_customer_merchant",
+      "displayName": "Customer & merchant insights",
+      "layout": [
+        {
+          "widget": {
+            "name": "chart_segment_adoption",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_segment_adoption",
+                "fields": [
+                  {"name": "segment", "expression": "`segment`"},
+                  {"name": "qris_active_pct", "expression": "`qris_active_pct`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "segment", "scale": {"type": "categorical"}, "displayName": "Segment"},
+                "y": {"fieldName": "qris_active_pct", "scale": {"type": "quantitative"}, "displayName": "QRIS-active %"}
+              },
+              "frame": {"showTitle": true, "title": "QRIS adoption rate by segment"}
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 3, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "chart_tier",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_tier_volume",
+                "fields": [
+                  {"name": "merchant_tier", "expression": "`merchant_tier`"},
+                  {"name": "volume_idr", "expression": "`volume_idr`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "merchant_tier", "scale": {"type": "categorical"}, "displayName": "Merchant tier"},
+                "y": {"fieldName": "volume_idr", "scale": {"type": "quantitative"}, "displayName": "QRIS volume (IDR)"}
+              },
+              "frame": {"showTitle": true, "title": "QRIS volume by merchant tier"}
+            }
+          },
+          "position": {"x": 3, "y": 0, "width": 3, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "chart_mcc",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_mcc_volume",
+                "fields": [
+                  {"name": "mcc_description", "expression": "`mcc_description`"},
+                  {"name": "volume_idr", "expression": "`volume_idr`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "volume_idr", "scale": {"type": "quantitative"}, "displayName": "QRIS volume (IDR)"},
+                "y": {"fieldName": "mcc_description", "scale": {"type": "categorical", "sort": {"by": "x-reversed"}}, "displayName": "Category (MCC)"}
+              },
+              "frame": {"showTitle": true, "title": "QRIS volume by MCC"}
+            }
+          },
+          "position": {"x": 0, "y": 6, "width": 3, "height": 7}
+        },
+        {
+          "widget": {
+            "name": "chart_dau",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_dau_trend",
+                "fields": [
+                  {"name": "session_date", "expression": "`session_date`"},
+                  {"name": "dau", "expression": "`dau`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 3,
+              "widgetType": "area",
+              "encodings": {
+                "x": {"fieldName": "session_date", "scale": {"type": "temporal"}, "displayName": "Date"},
+                "y": {"fieldName": "dau", "scale": {"type": "quantitative"}, "displayName": "Daily active mobile users"}
+              },
+              "frame": {"showTitle": true, "title": "Mobile DAU trend (30d)"}
+            }
+          },
+          "position": {"x": 3, "y": 6, "width": 3, "height": 7}
+        },
+        {
+          "widget": {
+            "name": "table_rails",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_qris_vs_bifast",
+                "fields": [
+                  {"name": "rail", "expression": "`rail`"},
+                  {"name": "volume_idr", "expression": "`volume_idr`"},
+                  {"name": "txn_count", "expression": "`txn_count`"}
+                ],
+                "disaggregated": true
+              }
+            }],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "rail",       "displayName": "Rail",         "type": "string"},
+                  {"fieldName": "volume_idr", "displayName": "Volume (IDR)", "type": "decimal"},
+                  {"fieldName": "txn_count",  "displayName": "Transactions", "type": "integer"}
+                ]
+              },
+              "frame": {"showTitle": true, "title": "QRIS vs BI-Fast (30d)"}
+            }
+          },
+          "position": {"x": 0, "y": 13, "width": 6, "height": 4}
+        }
+      ]
+    }
+  ]
+}
