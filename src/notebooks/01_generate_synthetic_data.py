@@ -147,11 +147,8 @@ def gen_nik(seed):
     region = f"{rng.randint(11, 94):02d}{rng.randint(1, 99):02d}{rng.randint(1, 99):02d}"
     dd = rng.randint(1, 28)
     mm = rng.randint(1, 12)
-    yy = rng.randint(45, 5)  # 1945-2005 (some born in early 2000s)
-    if yy < 10:
-        yy_str = f"0{yy}"
-    else:
-        yy_str = f"{yy}"
+    year = rng.randint(1945, 2005)  # birth year
+    yy_str = f"{year % 100:02d}"
     serial = f"{rng.randint(1, 9999):04d}"
     return f"{region}{dd:02d}{mm:02d}{yy_str}{serial}"
 
