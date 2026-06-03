@@ -39,6 +39,7 @@ print(f"Generating: {N_CUST:,} customers, {N_MERCH:,} merchants, {DAYS} days of 
 
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
+from pyspark.sql.window import Window
 import random
 
 SEED = 42
@@ -371,9 +372,7 @@ qris_with_merch = (
         .withColumn("merch_idx", (F.expr(f"floor(rand({SEED}+200) * {n_merchants})") + F.lit(1)).cast("long"))
 )
 
-merchants_indexed = merchants_idx.withColumn("idx", F.row_number().over(
-    __import__("pyspark.sql.window", fromlist=["Window"]).Window.orderBy("merchant_id")
-))
+merchants_indexed = merchants_idx.withColumn("idx", F.row_number().over(Window.orderBy("merchant_id")))
 
 qris_joined = (
     qris_with_merch.alias("t")
