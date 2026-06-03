@@ -478,39 +478,33 @@
               }
             ],
             "spec": {
-              "version": 1,
+              "version": 2,
               "widgetType": "table",
               "encodings": {
                 "columns": [
                   {
                     "fieldName": "merchant_name",
-                    "displayName": "Merchant",
-                    "type": "string"
+                    "displayName": "Merchant"
                   },
                   {
                     "fieldName": "merchant_tier",
-                    "displayName": "Tier",
-                    "type": "string"
+                    "displayName": "Tier"
                   },
                   {
                     "fieldName": "mcc_description",
-                    "displayName": "Category",
-                    "type": "string"
+                    "displayName": "Category"
                   },
                   {
                     "fieldName": "city",
-                    "displayName": "City",
-                    "type": "string"
+                    "displayName": "City"
                   },
                   {
                     "fieldName": "volume_idr",
-                    "displayName": "Volume (IDR)",
-                    "type": "decimal"
+                    "displayName": "Volume (IDR)"
                   },
                   {
                     "fieldName": "txn_count",
-                    "displayName": "Transactions",
-                    "type": "integer"
+                    "displayName": "Transactions"
                   }
                 ]
               },
@@ -779,24 +773,21 @@
               }
             ],
             "spec": {
-              "version": 1,
+              "version": 2,
               "widgetType": "table",
               "encodings": {
                 "columns": [
                   {
                     "fieldName": "rail",
-                    "displayName": "Rail",
-                    "type": "string"
+                    "displayName": "Rail"
                   },
                   {
                     "fieldName": "volume_idr",
-                    "displayName": "Volume (IDR)",
-                    "type": "decimal"
+                    "displayName": "Volume (IDR)"
                   },
                   {
                     "fieldName": "txn_count",
-                    "displayName": "Transactions",
-                    "type": "integer"
+                    "displayName": "Transactions"
                   }
                 ]
               },
