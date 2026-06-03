@@ -4,4 +4,4 @@ resources:
       display_name: "QRIS Digital Banking — Executive Dashboard"
       file_path: ../assets/dashboard/qris_dashboard.lvdash.json
       warehouse_id: ${var.warehouse_id}
-      parent_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}/dashboards
+      parent_path: /Workspace/Users/${workspace.current_user.userName}
