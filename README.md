@@ -46,10 +46,14 @@ databricks bundle run qris_demo_setup_job --profile dante-demo-env
 
 The bundle creates:
 - Schema `dante_azure_sea.qris_digital_banking_demo`
-- A setup job (`qris_demo_setup_job`) that runs data gen + the pipeline
+- A setup job (`qris_demo_setup_job`) that runs data gen + the pipeline + the Genie bootstrap
 - A Lakeflow Declarative Pipeline (`qris_digital_banking_pipeline`)
 - An AI/BI Dashboard (`QRIS Digital Banking Executive Dashboard`)
-- A Genie Space asset (registered as a bundle resource — finalize Genie wiring via UI after first deploy)
+- A Genie Space (auto-created via `/api/2.0/data-rooms`) with:
+  - 10 tables registered
+  - 10 UC table comments (Genie auto-uses these as table snippets)
+  - 1 TEXT_INSTRUCTION (general space instructions from `assets/genie/instructions.md`)
+  - 12 SQL_INSTRUCTION examples (from `assets/genie/example_sql.sql`)
 
 ### Override variables
 

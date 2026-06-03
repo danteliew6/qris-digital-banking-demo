@@ -2,18 +2,13 @@
 # MAGIC %md
 # MAGIC # 02 — Bootstrap Genie Space
 # MAGIC
-# MAGIC Creates (or updates) the QRIS Digital Banking Genie Space programmatically via the Databricks SDK,
-# MAGIC then attaches the curated instructions and example SQL queries that ship with this bundle.
+# MAGIC Creates (or updates) the QRIS Digital Banking Genie Space programmatically and loads:
+# MAGIC - 10 UC table COMMENTs (so Genie auto-picks them up as table snippets)
+# MAGIC - 1 TEXT_INSTRUCTION (general space-level instructions from `assets/genie/instructions.md`)
+# MAGIC - 12 SQL_INSTRUCTION example queries (from `assets/genie/example_sql.sql`)
 # MAGIC
-# MAGIC The space is configured with:
-# MAGIC - 8 tables: customers, accounts, merchants, qris_transactions, bifast_transfers,
-# MAGIC   mobile_sessions, daily_customer_metrics, daily_merchant_metrics, customer_overview
-# MAGIC - General instructions from `assets/genie/instructions.md`
-# MAGIC - 12 example SQL queries from `assets/genie/example_sql.sql`
-# MAGIC
-# MAGIC The Genie Space *Create* API is still preview in some workspaces. If the SDK call returns
-# MAGIC `RESOURCE_DOES_NOT_EXIST` or 404, the notebook falls back to printing detailed manual setup
-# MAGIC instructions you can follow in the Workspace UI.
+# MAGIC Uses the `/api/2.0/data-rooms` endpoint, which is the production Genie Spaces REST API
+# MAGIC on Azure Databricks.
 
 # COMMAND ----------
 
@@ -29,178 +24,178 @@ SPACE_TITLE   = dbutils.widgets.get("space_title")
 FQS = f"{CATALOG}.{SCHEMA}"
 
 TABLES_FOR_GENIE = [
-    "customers",
-    "accounts",
-    "merchants",
-    "qris_transactions",
-    "bifast_transfers",
-    "mobile_sessions",
-    "daily_customer_metrics",
-    "daily_merchant_metrics",
-    "customer_overview",
+    "customers", "accounts", "merchants",
+    "qris_transactions", "bifast_transfers",
+    "mobile_sessions", "app_events",
+    "daily_customer_metrics", "daily_merchant_metrics", "customer_overview",
 ]
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Read curated instructions + example SQL from bundle assets
+# MAGIC ## 1. Set UC table COMMENTs (these become Genie's table snippets)
 
 # COMMAND ----------
 
-import os, json, requests
-
-NOTEBOOK_DIR = os.path.dirname(dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get())
-BUNDLE_ROOT  = os.path.dirname(os.path.dirname(NOTEBOOK_DIR))
-ASSETS_DIR   = "/Workspace" + BUNDLE_ROOT + "/assets/genie"
-
-print(f"Assets dir: {ASSETS_DIR}")
-
-def read_asset(name: str) -> str:
-    path = f"{ASSETS_DIR}/{name}"
-    try:
-        with open(path, "r") as fh:
-            return fh.read()
-    except FileNotFoundError:
-        # Fallback to dbfs-style path if bundle isn't on /Workspace
-        alt = path.replace("/Workspace", "")
-        with open(alt, "r") as fh:
-            return fh.read()
-
-instructions_md = read_asset("instructions.md")
-example_sql     = read_asset("example_sql.sql")
-
-print(f"instructions.md: {len(instructions_md):,} chars")
-print(f"example_sql.sql: {len(example_sql):,} chars")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Try programmatic creation via Genie Spaces REST API
-
-# COMMAND ----------
-
-ctx     = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-WS_URL  = ctx.apiUrl().get()
-TOKEN   = ctx.apiToken().get()
-
-def example_sql_blocks(sql_text: str):
-    """Split the curated SQL file into one block per query, skipping the file-header comment."""
-    blocks = []
-    cur = []
-    for line in sql_text.splitlines():
-        if line.startswith("-- #") or line.startswith("-- ----"):
-            if cur and any(l.strip() and not l.strip().startswith("--") for l in cur):
-                blocks.append("\n".join(cur).strip())
-                cur = []
-        cur.append(line)
-    if cur and any(l.strip() and not l.strip().startswith("--") for l in cur):
-        blocks.append("\n".join(cur).strip())
-    # Drop pure-comment heads
-    blocks = [b for b in blocks if any(line.strip() and not line.strip().startswith("--") for line in b.splitlines())]
-    return blocks
-
-queries = example_sql_blocks(example_sql)
-print(f"Parsed {len(queries)} example SQL queries from curated file.")
-
-# COMMAND ----------
-
-import json, requests
-
-def api(method, path, body=None):
-    r = requests.request(method, f"{WS_URL}{path}",
-                         headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
-                         data=json.dumps(body) if body else None)
-    return r.status_code, (r.json() if r.text else {})
-
-# Build space payload — schema may shift between Databricks releases; we use the most recent
-# public preview shape and fall back gracefully if the workspace rejects it.
-space_payload = {
-    "title": SPACE_TITLE,
-    "description": "Conversational Q&A for QRIS payments, BI-Fast, and digital engagement (Indonesian retail banking demo).",
-    "warehouse_id": WAREHOUSE_ID,
-    "tables": [{"catalog_name": CATALOG, "schema_name": SCHEMA, "table_name": t} for t in TABLES_FOR_GENIE],
-    "general_instructions": instructions_md,
-    "example_queries": [{"sql": q} for q in queries[:12]],
+TABLE_COMMENTS = {
+    "customers":              "ONE ROW PER CUSTOMER. PT Bank Cendrawasih retail customer master. Use for segment/city/age/occupation filters. Watch digital_active for any 'digital' question.",
+    "accounts":               "ONE ROW PER (customer, account_type). Savings/Giro/Deposito balances in IDR. Sum balance_idr by customer_id for total relationship size.",
+    "merchants":              "ONE ROW PER MERCHANT. QRIS-registered merchants. merchant_tier in (UMI, UKE, UMK, UBE) for micro/small/medium/large. mcc + mcc_description identify category.",
+    "qris_transactions":      "ONE ROW PER QRIS PAYMENT (90 days of history). ALWAYS filter status='SUCCESS' for revenue questions. txn_date is the date column. acquirer_bank may be Bank Cendrawasih or another bank (leakage).",
+    "bifast_transfers":       "ONE ROW PER BI-FAST TRANSFER. Inter-bank instant transfers via Bank Indonesia Fast Payment rail. direction is IN/OUT. counterparty_bank is the OTHER bank.",
+    "mobile_sessions":        "ONE ROW PER MOBILE APP SESSION. session_date is the date. duration_sec and screens_visited indicate engagement intensity.",
+    "app_events":             "ONE ROW PER IN-APP EVENT. event_type covers login, view_balance, qris_scan, qris_pay_success, qris_pay_fail, start_transfer, etc. Use for funnel analyses.",
+    "daily_customer_metrics": "GOLD AGGREGATE: ONE ROW PER (customer, date). Pre-aggregated daily KPIs (qris counts/amount, bifast counts/amount, session counts). Use for time-series customer questions.",
+    "daily_merchant_metrics": "GOLD AGGREGATE: ONE ROW PER (merchant, date). Pre-aggregated daily KPIs per merchant. Use for merchant trend/top-N questions.",
+    "customer_overview":      "GOLD WIDE TABLE: ONE ROW PER CUSTOMER. Profile + total/savings/giro/deposito balances + 30-day rolling QRIS/BI-Fast/session KPIs + active_days_30d. Best for 'top N customers' or cross-sell questions.",
 }
 
-# Look for an existing space with our title first
-status, listed = api("GET", "/api/2.0/data-rooms")  # legacy alias
-if status == 404:
-    status, listed = api("GET", "/api/2.0/genie/spaces")
-
-existing_id = None
-if status == 200:
-    for sp in (listed.get("spaces") or listed.get("data_rooms") or []):
-        if sp.get("title") == SPACE_TITLE or sp.get("display_name") == SPACE_TITLE:
-            existing_id = sp.get("id") or sp.get("space_id")
-            break
-
-print(f"List endpoint status: {status}; existing_id: {existing_id}")
-
-# COMMAND ----------
-
-created_id = None
-errors = []
-
-if existing_id:
-    # Try update
-    for path in [f"/api/2.0/genie/spaces/{existing_id}", f"/api/2.0/data-rooms/{existing_id}"]:
-        status, body = api("PATCH", path, space_payload)
-        if status in (200, 204):
-            created_id = existing_id
-            print(f"Updated existing space {existing_id} at {path}")
-            break
-        errors.append((path, status, body))
-else:
-    for path in ["/api/2.0/genie/spaces", "/api/2.0/data-rooms"]:
-        status, body = api("POST", path, space_payload)
-        if status in (200, 201):
-            created_id = body.get("id") or body.get("space_id")
-            print(f"Created space {created_id} at {path}")
-            break
-        errors.append((path, status, body))
-
-if created_id:
-    print(f"\n✓ Genie Space ready: {created_id}")
-    print(f"  Open it at: {WS_URL}/sql/genie/{created_id}  (or via Workspace UI → AI/BI → Genie)")
-else:
-    print("\n⚠ Programmatic Genie creation did not succeed on this workspace.")
-    print("  This is expected on workspaces where the Genie REST API is still preview-gated.")
-    print("  Errors tried:")
-    for p, s, b in errors:
-        print(f"    {p} → {s} — {json.dumps(b)[:200]}")
-    print("\n→ Follow the manual setup steps printed below.")
+for tbl, comment in TABLE_COMMENTS.items():
+    esc = comment.replace("'", "''")
+    spark.sql(f"COMMENT ON TABLE {FQS}.{tbl} IS '{esc}'")
+    print(f"  COMMENT set on {tbl}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Manual setup fallback (UI steps)
+# MAGIC ## 2. Find or create the Genie space
 
 # COMMAND ----------
 
-print("=" * 78)
-print("MANUAL GENIE SPACE SETUP — follow these steps in the Workspace UI")
-print("=" * 78)
+import json, re, requests
+
+ctx    = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+WS_URL = ctx.apiUrl().get()
+TOKEN  = ctx.apiToken().get()
+HDRS   = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
+
+def get(p):   return requests.get(f"{WS_URL}{p}",  headers=HDRS).json()
+def post(p,b):return requests.post(f"{WS_URL}{p}", headers=HDRS, data=json.dumps(b)).json()
+
+# Look for existing space
+listed = get("/api/2.0/data-rooms")
+existing = None
+for s in listed.get("data_rooms", []) or []:
+    if s.get("display_name") == SPACE_TITLE:
+        existing = s.get("space_id") or s.get("id")
+        break
+
+if existing:
+    space_id = existing
+    print(f"Found existing Genie space: {space_id}")
+else:
+    body = {
+        "display_name": SPACE_TITLE,
+        "description":  "Conversational Q&A for QRIS payments, BI-Fast, and digital engagement (Indonesian retail banking demo)",
+        "warehouse_id": WAREHOUSE_ID,
+        "table_identifiers": [f"{FQS}.{t}" for t in TABLES_FOR_GENIE],
+        "run_as_type":  "VIEWER",
+    }
+    created = post("/api/2.0/data-rooms", body)
+    space_id = created.get("space_id") or created.get("id")
+    print(f"Created Genie space: {space_id}")
+    if not space_id:
+        print("Create failed:", json.dumps(created)[:500]); raise SystemExit(1)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. Wipe + reload TEXT_INSTRUCTION (general) and SQL_INSTRUCTIONs (examples)
+
+# COMMAND ----------
+
+# Delete existing TEXT and SQL instructions so reruns are idempotent.
+existing_inst = get(f"/api/2.0/data-rooms/{space_id}/instructions").get("instructions", []) or []
+delete_count = 0
+for inst in existing_inst:
+    if inst.get("instruction_type") in ("TEXT_INSTRUCTION", "SQL_INSTRUCTION"):
+        iid = inst.get("instruction_id") or inst.get("id")
+        r = requests.delete(f"{WS_URL}/api/2.0/data-rooms/{space_id}/instructions/{iid}", headers=HDRS)
+        if r.status_code in (200, 204):
+            delete_count += 1
+print(f"Deleted {delete_count} prior instructions")
+
+# COMMAND ----------
+
+# Load instructions.md (general text) and post as TEXT_INSTRUCTION
+import os
+NB_PATH = ctx.notebookPath().get()
+BUNDLE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(NB_PATH)))
+INSTR_PATH = "/Workspace" + BUNDLE_ROOT + "/assets/genie/instructions.md"
+SQL_PATH   = "/Workspace" + BUNDLE_ROOT + "/assets/genie/example_sql.sql"
+print(f"Reading: {INSTR_PATH}")
+
+with open(INSTR_PATH) as f:
+    general = f.read()
+
+res = post(f"/api/2.0/data-rooms/{space_id}/instructions", {
+    "instruction_type": "TEXT_INSTRUCTION",
+    "title": general.strip().split("\n", 1)[0][:200],
+    "content": general,
+    "use_as_tool": False,
+})
+print(f"  TEXT_INSTRUCTION -> {res.get('instruction_id') or res}")
+
+# COMMAND ----------
+
+# Parse example_sql.sql into 12 blocks, post each as SQL_INSTRUCTION
+with open(SQL_PATH) as f:
+    raw = f.read()
+
+blocks = []
+current = {"title": None, "sql_lines": []}
+title_re = re.compile(r"^--\s+#\d+\s+(.+)$")
+for line in raw.splitlines():
+    m = title_re.match(line.strip())
+    if m:
+        if current["title"] and current["sql_lines"]:
+            blocks.append({"title": current["title"], "sql": "\n".join(current["sql_lines"]).strip()})
+        current = {"title": m.group(1).strip(), "sql_lines": []}
+        continue
+    if current["title"] is None or line.strip().startswith("--"):
+        continue
+    if not line.strip():
+        if current["sql_lines"]:
+            current["sql_lines"].append("")
+        continue
+    current["sql_lines"].append(line.rstrip())
+if current["title"] and current["sql_lines"]:
+    blocks.append({"title": current["title"], "sql": "\n".join(current["sql_lines"]).strip()})
+
+TABLES_QUAL = list(TABLE_COMMENTS.keys())
+def qualify(sql):
+    for t in TABLES_QUAL:
+        sql = re.sub(rf"(FROM|JOIN)\s+{t}\b",
+                     lambda m: f"{m.group(1)} {FQS}.{t}", sql)
+    return sql
+
+print(f"Loading {len(blocks)} example SQL queries...")
+for i, b in enumerate(blocks, 1):
+    sql = qualify(b["sql"]).rstrip().rstrip(";") + ";"
+    res = post(f"/api/2.0/data-rooms/{space_id}/instructions", {
+        "instruction_type": "SQL_INSTRUCTION",
+        "title": b["title"][:160],
+        "content": sql,
+        "use_as_tool": False,
+    })
+    print(f"  #{i:2d} {b['title'][:60]:60s} -> {res.get('instruction_id') or res}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 4. Done
+
+# COMMAND ----------
+
 print(f"""
-1.  In the workspace, click 'AI / BI' → 'Genie' → 'New Genie space'.
+✓ Genie space ready:
+    Space ID: {space_id}
+    URL:      {WS_URL}/genie/rooms/{space_id}
 
-2.  Title: {SPACE_TITLE}
+Tables registered: {len(TABLES_FOR_GENIE)}
+Table comments set: {len(TABLE_COMMENTS)}
+Example SQL queries loaded: {len(blocks)}
+General instructions: 1
 
-3.  SQL Warehouse: select the warehouse with ID {WAREHOUSE_ID}
-    (or any running serverless warehouse).
-
-4.  Add these tables (catalog: {CATALOG}, schema: {SCHEMA}):
+Try benchmark question Q1: "What was our total QRIS volume in the last 30 days?"
 """)
-for t in TABLES_FOR_GENIE:
-    print(f"      - {CATALOG}.{SCHEMA}.{t}")
-print(f"""
-5.  Paste the contents of  {ASSETS_DIR}/instructions.md
-    into the 'General instructions' field.
-
-6.  Open  {ASSETS_DIR}/example_sql.sql  and add each of the 12 queries under
-    'Example SQL queries' (one Example per block).
-
-7.  Save the space. Test it with the 12 benchmark questions in
-        {ASSETS_DIR}/benchmark_questions.md
-""")
-print("=" * 78)
