@@ -12,36 +12,50 @@
 import dlt
 from pyspark.sql import functions as F
 
-# These pipeline configurations are set on the LDP resource (catalog/schema)
-# Access them via spark.conf to make the notebook environment-agnostic.
 catalog = spark.conf.get("bundle.catalog")
 schema  = spark.conf.get("bundle.schema")
 fqs     = f"{catalog}.{schema}"
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Bronze — raw landed copies (passthrough with metadata)
+# MAGIC ## Bronze — raw landed copies (passthrough with ingest metadata)
 
 # COMMAND ----------
 
-def bronze_passthrough(table_name: str, source_table: str, comment: str):
-    @dlt.table(name=table_name, comment=comment, table_properties={"quality": "bronze"})
-    def _():
-        return (
-            spark.read.table(source_table)
-                .withColumn("_ingested_at", F.current_timestamp())
-                .withColumn("_source_table", F.lit(source_table))
-        )
-    _.__name__ = table_name
-    return _
+@dlt.table(name="bronze_customers", comment="Raw customer master", table_properties={"quality": "bronze"})
+def bronze_customers():
+    return (spark.read.table(f"{fqs}.raw_customers")
+            .withColumn("_ingested_at", F.current_timestamp()))
 
-bronze_customers   = bronze_passthrough("bronze_customers",          f"{fqs}.raw_customers",          "Raw customer master")
-bronze_accounts    = bronze_passthrough("bronze_accounts",           f"{fqs}.raw_accounts",           "Raw account balances")
-bronze_merchants   = bronze_passthrough("bronze_merchants",          f"{fqs}.raw_merchants",          "Raw QRIS merchants")
-bronze_qris        = bronze_passthrough("bronze_qris_transactions",  f"{fqs}.raw_qris_transactions",  "Raw QRIS payment events")
-bronze_bifast      = bronze_passthrough("bronze_bifast_transfers",   f"{fqs}.raw_bifast_transfers",   "Raw BI-Fast transfers")
-bronze_sessions    = bronze_passthrough("bronze_mobile_sessions",    f"{fqs}.raw_mobile_sessions",    "Raw mobile app sessions")
-bronze_app_events  = bronze_passthrough("bronze_app_events",         f"{fqs}.raw_app_events",         "Raw in-app events")
+@dlt.table(name="bronze_accounts", comment="Raw account balances", table_properties={"quality": "bronze"})
+def bronze_accounts():
+    return (spark.read.table(f"{fqs}.raw_accounts")
+            .withColumn("_ingested_at", F.current_timestamp()))
+
+@dlt.table(name="bronze_merchants", comment="Raw QRIS merchants", table_properties={"quality": "bronze"})
+def bronze_merchants():
+    return (spark.read.table(f"{fqs}.raw_merchants")
+            .withColumn("_ingested_at", F.current_timestamp()))
+
+@dlt.table(name="bronze_qris_transactions", comment="Raw QRIS payment events", table_properties={"quality": "bronze"})
+def bronze_qris_transactions():
+    return (spark.read.table(f"{fqs}.raw_qris_transactions")
+            .withColumn("_ingested_at", F.current_timestamp()))
+
+@dlt.table(name="bronze_bifast_transfers", comment="Raw BI-Fast transfers", table_properties={"quality": "bronze"})
+def bronze_bifast_transfers():
+    return (spark.read.table(f"{fqs}.raw_bifast_transfers")
+            .withColumn("_ingested_at", F.current_timestamp()))
+
+@dlt.table(name="bronze_mobile_sessions", comment="Raw mobile sessions", table_properties={"quality": "bronze"})
+def bronze_mobile_sessions():
+    return (spark.read.table(f"{fqs}.raw_mobile_sessions")
+            .withColumn("_ingested_at", F.current_timestamp()))
+
+@dlt.table(name="bronze_app_events", comment="Raw in-app events", table_properties={"quality": "bronze"})
+def bronze_app_events():
+    return (spark.read.table(f"{fqs}.raw_app_events")
+            .withColumn("_ingested_at", F.current_timestamp()))
 
 # COMMAND ----------
 # MAGIC %md
